@@ -50,6 +50,7 @@ class LumiPipeline:
                 # State 2: WAKE_DETECTED
                 self.state = PipelineState.WAKE_DETECTED
                 self.tts.speak("Yes?")
+                time.sleep(0.3)
 
                 # State 3: LISTENING - Capture speech with VAD
                 self.state = PipelineState.LISTENING

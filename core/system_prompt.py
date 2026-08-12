@@ -35,4 +35,7 @@ JSON: {"intent": "search_web", "query": "python tutorials", "confidence": 1.0, "
 User: "delete system files"
 JSON: {"intent": "unknown", "confidence": 0.0, "requires_confirmation": false}
 
+User: "Thank you"
+JSON: {"intent": "unknown", "confidence": 0.0, "requires_confirmation": false}
+
 Respond ONLY with valid JSON. No markdown code blocks, no explanation."""

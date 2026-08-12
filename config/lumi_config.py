@@ -34,6 +34,7 @@ WHITELISTED_PATH_ALIASES = {
 WHITELISTED_APPS = {
     "chrome": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     "vscode": os.path.join(USER_HOME, r"AppData\Local\Programs\Microsoft VS Code\Code.exe"),
+    "code": os.path.join(USER_HOME, r"AppData\Local\Programs\Microsoft VS Code\Code.exe"),
 }
 
 # Intents that ALWAYS require a spoken "Yes/No" confirmation from the user
