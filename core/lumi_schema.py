@@ -25,35 +25,25 @@ from pydantic import BaseModel, Field
 # Pydantic will reject it immediately.
 
 class IntentType(str, Enum):
-    OPEN_APP = "open_app"              # Open an application (e.g., Chrome, VS Code)
+    OPEN_APP = "open_app"              # Open an application
     CLOSE_APP = "close_app"            # Close an application
     OPEN_FILE = "open_file"            # Open a file inside a whitelisted folder
     CREATE_FOLDER = "create_folder"    # Create a new folder
-    OPEN_URL = "open_url"              # Open a specific website URL
-    SEARCH_WEB = "search_web"          # Search the web on Google
-    UNKNOWN = "unknown"                # Fallback if command is nonsense or unclear
+    CREATE_FILE = "create_file"        # Create a new file safely on disk
+    OPEN_URL = "open_url"              # Open a specific URL
+    SEARCH_WEB = "search_web"          # Search Google
+    SEARCH_YOUTUBE = "search_youtube"  # Search YouTube directly
+    UI_ACTION = "ui_action"            # Safe in-app UI automation via pywinauto
+    UNKNOWN = "unknown"                # Fallback if command is unconfident or restricted
 
 
 class LumiIntent(BaseModel):
-    """
-    This is the Pydantic model enforcing the JSON structure.
-    """
     intent: IntentType
-    
-    # target: Name of the app (e.g. "chrome") or file name
-    target: Optional[str] = None       
-    
-    # alias_path: NEVER a raw Windows path (e.g., C:\Users\...).
-    # ONLY whitelisted folder alias names like "Desktop", "Downloads".
-    alias_path: Optional[str] = None   
-    
-    # query: Search query string for web searches
-    query: Optional[str] = None        
-    
-    # confidence: Float between 0.0 and 1.0 indicating model confidence
+    target: Optional[str] = None       # Name of app or folder
+    alias_path: Optional[str] = None   # Whitelisted folder alias ("Desktop", "Downloads", etc.)
+    filename: Optional[str] = None     # Filename for create_file (e.g. "script.py")
+    query: Optional[str] = None        # Search query string
+    app: Optional[str] = None          # App name for UI automation ("vscode", "chrome")
+    action: Optional[str] = None       # Pre-approved UI action name ("new_file", "new_tab")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    
-    # requires_confirmation: Set True if the action creates/modifies files
     requires_confirmation: bool = False
-
-    

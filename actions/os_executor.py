@@ -24,11 +24,16 @@ def execute_intent(intent: LumiIntent) -> str:
             app_key = intent.target.lower() if intent.target else ""
             if app_key in WHITELISTED_APPS:
                 app_path = WHITELISTED_APPS[app_key]
-                subprocess.Popen([app_path])
+                
+                # If opening Chrome, pass default profile flag to bypass profile picker
+                if app_key == "chrome":
+                    subprocess.Popen([app_path, "--profile-directory=Default"])
+                else:
+                    subprocess.Popen([app_path])
+
                 msg = f"Opened {intent.target}."
                 append_audit_entry(raw_dict, True, "executed", msg)
                 return msg
-            return f"Could not find application {intent.target} in whitelist."
 
         # Action 2: Close Application
         elif intent_type == IntentType.CLOSE_APP:
