@@ -33,3 +33,27 @@ def test_invalid_path_alias_blocked():
     is_auth, status = validate_and_authorize(intent)
     assert is_auth is False
     assert "invalid or unverified" in status
+
+def test_create_file_valid():
+    intent = LumiIntent(intent=IntentType.CREATE_FILE, filename="notes.txt", alias_path="Desktop", confidence=0.95)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is True
+    assert status == "requires_confirmation"
+
+def test_create_file_path_traversal_rejected():
+    intent = LumiIntent(intent=IntentType.CREATE_FILE, filename="../../evil.py", alias_path="Desktop", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is False
+    assert "failed security checks" in status
+
+def test_create_file_disallowed_extension_rejected():
+    intent = LumiIntent(intent=IntentType.CREATE_FILE, filename="script.exe", alias_path="Desktop", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is False
+    assert "failed security checks" in status
+
+def test_create_file_leading_dot_rejected():
+    intent = LumiIntent(intent=IntentType.CREATE_FILE, filename=".hidden.py", alias_path="Desktop", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is False
+    assert "failed security checks" in status
