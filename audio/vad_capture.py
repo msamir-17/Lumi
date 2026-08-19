@@ -3,42 +3,41 @@ import numpy as np
 import sounddevice as sd
 
 SAMPLE_RATE = 16000
-CHUNK_SIZE = 512  # ~32ms blocks at 16kHz
+CHUNK_SIZE = 512
 
 def capture_speech_vad(silence_duration_ms: int = 800, max_timeout_s: float = 8.0) -> np.ndarray:
-    """
-    Captures spoken audio segment using RMS energy silence detection.
-    Stops automatically after silence_duration_ms of continuous silence or max_timeout_s.
-    Returns PCM float32 audio array normalized for Whisper STT.
-    """
     print("[VAD Capture] 🎤 Listening for spoken command...")
-    
+
     audio_frames = []
     silence_start_time = None
     start_time = time.time()
-    has_speech_started = False
     
-    # Silence energy threshold (RMS)
-    SILENCE_THRESHOLD = 0.005 
+    has_speech_started = False
+    consecutive_speech_chunks = 0
+    
+    # Tuned threshold + Debounce counter
+    SILENCE_THRESHOLD = 0.02   # Raised from 0.005 to reject mic hiss/fan noise
+    MIN_SPEECH_CHUNKS = 3      # ~100ms of sustained speech required before triggering
+    
     silence_limit_s = silence_duration_ms / 1000.0
-
     recording = True
 
     def audio_callback(indata, frames, time_info, status):
-        nonlocal silence_start_time, recording, has_speech_started
-        
+        nonlocal silence_start_time, recording, has_speech_started, consecutive_speech_chunks
+
         chunk = indata[:, 0]
         audio_frames.append(chunk.copy())
-        
-        # Calculate RMS volume energy
+
+        # RMS volume energy
         rms = np.sqrt(np.mean(chunk**2))
-        
-        # Mark speech as started once volume exceeds threshold
+
         if rms >= SILENCE_THRESHOLD:
-            has_speech_started = True
-            silence_start_time = None
+            consecutive_speech_chunks += 1
+            if consecutive_speech_chunks >= MIN_SPEECH_CHUNKS:
+                has_speech_started = True
+                silence_start_time = None
         else:
-            # Only count silence AFTER speech has started, or if 2.5 seconds pass with no speech
+            consecutive_speech_chunks = 0
             if has_speech_started:
                 if silence_start_time is None:
                     silence_start_time = time.time()
@@ -46,7 +45,7 @@ def capture_speech_vad(silence_duration_ms: int = 800, max_timeout_s: float = 8.
                     recording = False
                     raise sd.CallbackStop()
             elif time.time() - start_time >= 2.5:
-                # If no speech at all after 2.5s, stop
+                # No sustained speech within 2.5s -> exit
                 recording = False
                 raise sd.CallbackStop()
 
@@ -62,10 +61,8 @@ def capture_speech_vad(silence_duration_ms: int = 800, max_timeout_s: float = 8.
     print("[VAD Capture] 🛑 Recording finished.")
     if len(audio_frames) == 0:
         return np.array([], dtype=np.float32)
-        
-    return np.concatenate(audio_frames, axis=0) 
 
-
+    return np.concatenate(audio_frames, axis=0)
 
 
     
