@@ -25,6 +25,7 @@ class SpeechToTextEngine:
             audio_data,
             beam_size=1,
             language="en",
+            initial_prompt="Arijit Singh, YouTube, VS Code, Chrome, songs, files, folders,famous Songs , Coding Videos , Error videos , News" , # Bias Whisper's vocabulary,
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
             no_speech_threshold=0.6,
