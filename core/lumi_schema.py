@@ -1,5 +1,3 @@
-   
-
         # [ Spoken Text: "open chrome" ]
         #             ↓
         #     [ Llama 3.2 3B ]
@@ -14,36 +12,71 @@
 # Llama is never allowed to output C:\Windows\System32 or raw file paths. This makes it impossible for Llama to attack system files!
 
 
-from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, Field
-
 # Line-by-Line Explanation:
 # ---------------------------------------------------------------------
 # IntentType is an Enum (a fixed list of allowed choices).
 # Llama can ONLY pick one of these exact values. If it invents anything else,
 # Pydantic will reject it immediately.
+from pydantic import BaseModel, field_validator, model_validator, ValidationInfo
+from typing import Optional, Any
+from enum import Enum
 
 class IntentType(str, Enum):
-    OPEN_APP = "open_app"              # Open an application
-    CLOSE_APP = "close_app"            # Close an application
-    OPEN_FILE = "open_file"            # Open a file inside a whitelisted folder
-    CREATE_FOLDER = "create_folder"    # Create a new folder
-    CREATE_FILE = "create_file"        # Create a new file safely on disk
-    OPEN_URL = "open_url"              # Open a specific URL
-    SEARCH_WEB = "search_web"          # Search Google
-    SEARCH_YOUTUBE = "search_youtube"  # Search YouTube directly
-    UI_ACTION = "ui_action"            # Safe in-app UI automation via pywinauto
-    UNKNOWN = "unknown"                # Fallback if command is unconfident or restricted
-
+    OPEN_APP = 'open_app'
+    CLOSE_APP = 'close_app'
+    OPEN_FILE = 'open_file'
+    SEARCH_FILE = 'search_file'
+    CREATE_FOLDER = 'create_folder'
+    CREATE_FILE = 'create_file'
+    MEDIA_CONTROL = 'media_control'
+    OPEN_URL = 'open_url'
+    SEARCH_WEB = 'search_web'
+    SEARCH_YOUTUBE = 'search_youtube'
+    UNKNOWN = 'unknown'
 
 class LumiIntent(BaseModel):
     intent: IntentType
-    target: Optional[str] = None       # Name of app or folder
-    alias_path: Optional[str] = None   # Whitelisted folder alias ("Desktop", "Downloads", etc.)
-    filename: Optional[str] = None     # Filename for create_file (e.g. "script.py")
-    query: Optional[str] = None        # Search query string
-    app: Optional[str] = None          # App name for UI automation ("vscode", "chrome")
-    action: Optional[str] = None       # Pre-approved UI action name ("new_file", "new_tab")
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    target: Optional[str] = None
+    alias_path: Optional[str] = None
+    filename: Optional[str] = None
+    query: Optional[str] = None           # <-- ADDED THIS!
+    media_action: Optional[str] = None
+    confidence: float = 1.0
     requires_confirmation: bool = False
+
+    @field_validator('intent', mode='before')
+    @classmethod
+    def structural_intent_guard(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return v
+        
+        normalized = v.lower().strip()
+        synonym_map = {
+            'play_music': 'search_youtube',
+            'play_song': 'search_youtube',
+            'youtube_search': 'search_youtube',
+            'find_file': 'search_file',
+            'search_document': 'search_file',
+            'make_file': 'create_file',
+            'new_file': 'create_file',
+            'make_folder': 'create_folder',
+            'new_folder': 'create_folder',
+            'web_search': 'search_web'
+        }
+        return synonym_map.get(normalized, normalized)
+
+    @model_validator(mode='before')
+    @classmethod
+    def auto_redirect_youtube_app(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            intent = str(data.get('intent', '')).lower()
+            target = str(data.get('target', '')).lower()
+            query = str(data.get('query', '')).lower()
+
+            # If search_file was mistakenly chosen for YouTube search
+            if intent in ('open_app', 'search_file') and ('youtube' in target or 'youtube' in query or not data.get('alias_path')):
+                if 'youtube' in target or 'youtube' in query:
+                    data['intent'] = 'search_youtube'
+                    if not data.get('query'):
+                        data['query'] = data.get('target', 'trending music').replace('youtube', '').strip()
+        return data

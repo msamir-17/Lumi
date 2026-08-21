@@ -6,94 +6,129 @@ from config.lumi_config import (
     WHITELISTED_PATH_ALIASES,
     WHITELISTED_APPS,
     ALLOWED_FILE_EXTENSIONS,
+    ALLOWED_MEDIA_ACTIONS,
     MAX_FILENAME_LENGTH,
+    MAX_SEARCH_FILES_SCANNED,
+    MAX_SEARCH_DEPTH,
     FORCE_CONFIRM_INTENTS,
     BLOCKED_INTENTS
 )
 from core.lumi_schema import LumiIntent, IntentType
 from security.audit_log import append_audit_entry
 
-# Safe filename regex: Only alphanumeric, underscores, hyphens, and single dots allowed
 SAFE_FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9_\-\.]+$")
 
 def resolve_and_verify_path(alias: str, filename: Optional[str] = None) -> str | None:
-    """
-    Takes a whitelisted alias and an optional filename, resolves the combined path,
-    and enforces 3 defense-in-depth security layers against path traversal:
-    1. Filename sanitization (regex, length check, no leading dot)
-    2. File extension whitelist check
-    3. Combined path containment check (realpath + commonpath)
-    """
     if alias not in WHITELISTED_PATH_ALIASES:
         return None
 
     alias_root = os.path.realpath(WHITELISTED_PATH_ALIASES[alias])
-
     if filename is None:
         return alias_root
 
-    # --- Defense Layer 1: Filename Sanitization ---
-    if len(filename) > MAX_FILENAME_LENGTH:
+    # Defense 1: Sanitization
+    if len(filename) > MAX_FILENAME_LENGTH or not SAFE_FILENAME_PATTERN.match(filename) or filename.startswith("."):
         return None
-    if not SAFE_FILENAME_PATTERN.match(filename):
-        return None  # Rejects "..", "/", "\\", ":", null bytes, etc.
-    if filename.startswith("."):
-        return None  # No hidden files or ".." disguised with a leading dot
 
-    # --- Defense Layer 2: Extension Whitelist ---
+    # Defense 2: Extension Whitelist
     ext = os.path.splitext(filename)[1].lower()
     if ext not in ALLOWED_FILE_EXTENSIONS:
-        return None  # Rejects disallowed file types (.exe, .bat, .ps1, etc.)
+        return None
 
-    # --- Defense Layer 3: Combined Path Containment Check ---
+    # Defense 3: Containment
     candidate = os.path.realpath(os.path.join(alias_root, filename))
     if os.path.commonpath([candidate, alias_root]) != alias_root:
-        return None  # Escaped whitelist root -> reject traversal attempt
+        return None
 
     return candidate
 
 
+def bounded_file_search(alias: str, target_filename: str) -> str | None:
+    """
+    Searches for target_filename inside the whitelisted alias root.
+    Bounded by MAX_SEARCH_FILES_SCANNED and MAX_SEARCH_DEPTH.
+    Every match is re-verified via commonpath containment.
+    """
+    root = resolve_and_verify_path(alias)
+    if root is None or not os.path.exists(root):
+        return None
+
+    scanned = 0
+    clean_target = target_filename.strip().lower()
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        depth = dirpath[len(root):].count(os.sep)
+        if depth >= MAX_SEARCH_DEPTH:
+            dirnames[:] = []
+            continue
+
+        for fname in filenames:
+            scanned += 1
+            if scanned > MAX_SEARCH_FILES_SCANNED:
+                return None  # Reached limit -> bail out safely
+
+            if fname.lower() == clean_target:
+                candidate = os.path.realpath(os.path.join(dirpath, fname))
+                if os.path.commonpath([candidate, root]) == root:
+                    return candidate
+
+    return None
+
+
 def validate_and_authorize(intent: LumiIntent) -> Tuple[bool, str]:
-    """
-    Main SACL decision gate.
-    Returns: (is_authorized, status_code/reason)
-    """
     raw_dict = intent.model_dump()
     intent_str = intent.intent.value if hasattr(intent.intent, "value") else str(intent.intent)
 
-    # Rule 1: Check hard-blocked intent types
     if intent_str in BLOCKED_INTENTS:
         reason = f"Blocked: Intent '{intent_str}' is permanently restricted."
         append_audit_entry(raw_dict, False, "blocked", reason)
         return False, reason
 
-    # Rule 2: Check unknown intent
     if intent.intent == IntentType.UNKNOWN:
         reason = "Blocked: Intent is unknown or unconfident."
         append_audit_entry(raw_dict, False, "blocked", reason)
         return False, reason
 
-    # Rule 3: App whitelist check
+    # App Whitelist
     if intent.intent in (IntentType.OPEN_APP, IntentType.CLOSE_APP):
         if not intent.target or intent.target.lower() not in WHITELISTED_APPS:
             reason = f"Blocked: Application '{intent.target}' is not in whitelist."
             append_audit_entry(raw_dict, False, "blocked", reason)
             return False, reason
 
-    # Rule 4: Create File Validation (Alias + Filename checks)
-    if intent.intent == IntentType.CREATE_FILE:
+    # Create File
+    elif intent.intent == IntentType.CREATE_FILE:
         if not intent.alias_path or not intent.filename:
-            reason = "Blocked: 'create_file' requires both 'alias_path' and 'filename'."
+            reason = "Blocked: create_file requires both alias_path and filename."
             append_audit_entry(raw_dict, False, "blocked", reason)
             return False, reason
-        
-        resolved_file_path = resolve_and_verify_path(intent.alias_path, intent.filename)
-        if not resolved_file_path:
+        resolved = resolve_and_verify_path(intent.alias_path, intent.filename)
+        if not resolved:
             reason = f"Blocked: Filename '{intent.filename}' or path '{intent.alias_path}' failed security checks."
             append_audit_entry(raw_dict, False, "blocked", reason)
             return False, reason
 
-    # Rule 5: Generic Path alias check
+    # Media Control
+    elif intent.intent == IntentType.MEDIA_CONTROL:
+        if not intent.media_action or intent.media_action not in ALLOWED_MEDIA_ACTIONS:
+            reason = f"Blocked: Media action '{intent.media_action}' is not in whitelist."
+            append_audit_entry(raw_dict, False, "blocked", reason)
+            return False, reason
+        append_audit_entry(raw_dict, True, "authorized", "Authorized: Media control action.")
+        return True, "authorized"
+
+    # Search File
+    elif intent.intent == IntentType.SEARCH_FILE:
+        if not intent.alias_path or not intent.filename:
+            reason = "Blocked: search_file requires both alias_path and filename."
+            append_audit_entry(raw_dict, False, "blocked", reason)
+            return False, reason
+        if intent.alias_path not in WHITELISTED_PATH_ALIASES:
+            reason = f"Blocked: Path alias '{intent.alias_path}' is not whitelisted."
+            append_audit_entry(raw_dict, False, "blocked", reason)
+            return False, reason
+
+    # Generic Path Alias
     elif intent.alias_path:
         resolved_path = resolve_and_verify_path(intent.alias_path)
         if not resolved_path:
@@ -101,13 +136,11 @@ def validate_and_authorize(intent: LumiIntent) -> Tuple[bool, str]:
             append_audit_entry(raw_dict, False, "blocked", reason)
             return False, reason
 
-    # Rule 6: Force confirmation check
+    # Force Confirmation Check
     if (intent_str in FORCE_CONFIRM_INTENTS) or intent.requires_confirmation:
         reason = "Authorized: Requires spoken confirmation."
         append_audit_entry(raw_dict, True, "requires_confirmation", reason)
         return True, "requires_confirmation"
 
-    # All checks passed
-    reason = "Authorized: Intent passed all SACL security checks."
-    append_audit_entry(raw_dict, True, "authorized", reason)
+    append_audit_entry(raw_dict, True, "authorized", "Authorized: Intent passed all SACL checks.")
     return True, "authorized"

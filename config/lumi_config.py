@@ -35,7 +35,26 @@ WHITELISTED_APPS = {
     "chrome": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     "vscode": default_vscode_path,
     "code": default_vscode_path,
+    "explorer": r"C:\Windows\explorer.exe",
+    "notepad": r"C:\Windows\System32\notepad.exe",
+    "calculator": r"C:\Windows\System32\calc.exe",
+    "taskmanager": r"C:\Windows\System32\taskmgr.exe",
 }
+
+# Fixed set of allowed media actions (Exact Windows Virtual Key Codes)
+ALLOWED_MEDIA_ACTIONS = {
+    "play_pause": 0xB3,   # VK_MEDIA_PLAY_PAUSE
+    "next_track": 0xB0,   # VK_MEDIA_NEXT_TRACK
+    "prev_track": 0xB1,   # VK_MEDIA_PREV_TRACK
+    "volume_up": 0xAF,    # VK_VOLUME_UP
+    "volume_down": 0xAE,  # VK_VOLUME_DOWN
+    "mute": 0xAD,          # VK_VOLUME_MUTE
+}
+
+# Local file search bounds (Prevents pipeline hanging on massive directories)
+MAX_SEARCH_FILES_SCANNED = 5000
+MAX_SEARCH_DEPTH = 6
+
 
 # Only these extensions can ever be created on disk.
 # Executables/scripts (.exe, .bat, .ps1, .dll, .lnk) are strictly forbidden.

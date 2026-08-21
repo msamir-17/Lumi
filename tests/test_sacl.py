@@ -57,3 +57,28 @@ def test_create_file_leading_dot_rejected():
     is_auth, status = validate_and_authorize(intent)
     assert is_auth is False
     assert "failed security checks" in status
+
+def test_core_apps_whitelist():
+    for app in ["explorer", "notepad", "calculator", "taskmanager"]:
+        intent = LumiIntent(intent=IntentType.OPEN_APP, target=app, confidence=1.0)
+        is_auth, status = validate_and_authorize(intent)
+        assert is_auth is True
+        assert status == "authorized"
+
+def test_media_control_valid():
+    intent = LumiIntent(intent=IntentType.MEDIA_CONTROL, media_action="play_pause", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is True
+    assert status == "authorized"
+
+def test_media_control_invalid_rejected():
+    intent = LumiIntent(intent=IntentType.MEDIA_CONTROL, media_action="eject_cd", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is False
+    assert "not in whitelist" in status
+
+def test_search_file_valid():
+    intent = LumiIntent(intent=IntentType.SEARCH_FILE, filename="test.txt", alias_path="Desktop", confidence=1.0)
+    is_auth, status = validate_and_authorize(intent)
+    assert is_auth is True
+    assert status == "authorized"

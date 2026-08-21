@@ -25,11 +25,14 @@ class SpeechToTextEngine:
             audio_data,
             beam_size=1,
             language="en",
-            initial_prompt="Arijit Singh, YouTube, VS Code, Chrome, songs, files, folders,famous Songs , Coding Videos , Error videos , News" , # Bias Whisper's vocabulary,
+            temperature=0.0,                      # Pure deterministic greedy decoding
+            compression_ratio_threshold=2.4,      # Drops hallucinated repetitive loops
+            log_prob_threshold=-1.0,              # Drops low acoustic confidence tokens
+            initial_prompt="music, coding, DSA, Python, JAVA, CodewithHarry, YouTube, VS Code, Chrome, songs, files, folders",
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
             no_speech_threshold=0.6,
-            condition_on_previous_text=False,  # Stops hallucination-loop drift
+            condition_on_previous_text=False,
         )
 
         segments = list(segments)
